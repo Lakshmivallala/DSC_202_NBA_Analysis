@@ -30,7 +30,8 @@ SET stats.team = row.Team,
     stats.box_plus_minus = toFloat(row.BPM),
     stats.plus_minus = toFloat(row['+/-']),
     stats.minutes_played = toInteger(row.MP),
-    stats.location = CASE WHEN row.Home CONTAINS '@' THEN 'Away' ELSE 'Home' END;
+    stats.location = CASE WHEN row.Home CONTAINS '@' THEN 'Away' ELSE 'Home' END,
+    stats.result = row.Result;
 
 // ----------------------------------------------------------------------------
 
@@ -39,14 +40,19 @@ MATCH (p:Player)-[stats:PLAYED_IN]->(g:Game)
 MATCH (p)-[r:IN_TEAM]->(t:Team)
 WHERE stats.team = t.name 
 WITH p, t, r, 
+    min(g.date) AS earliest_date,
     max(g.date) AS latest_date,
+    count(stats) AS total_games,
+    sum(CASE WHEN stats.result STARTS WITH 'W' THEN 1 ELSE 0 END) AS total_wins,
     avg(stats.points) AS aPTS, 
     avg(stats.game_score) AS aGS, 
     avg(stats.box_plus_minus) AS aBPM, 
     avg(stats.plus_minus) AS aPM,
     avg(stats.minutes_played) AS aMP,
     head(collect(distinct stats.position)) AS pos
-SET r.last_played = latest_date,
+SET r.first_played = earliest_date,
+    r.last_played = latest_date,
+    r.num_games = total_games,
     r.avg_points = aPTS,
     r.avg_game_score = aGS,
     r.avg_bpm = aBPM,
@@ -57,7 +63,10 @@ SET p.current_team = t.name,
     p.avg_points = aPTS,
     p.avg_game_score = aGS,
     p.avg_bpm = aBPM,
-    p.avg_plus_minus = aPM;
+    p.avg_plus_minus = aPM,
+    p.avg_minutes_played = aMP,
+    p.num_games = total_games,
+    p.win_rate = toFloat(total_wins)/total_games;
 
 // ----------------------------------------------------------------------------
 
@@ -99,6 +108,5 @@ SET r.games_played = games_against,
 
 // 6. POSITIONS AS CENTRAL NODES
 MATCH (p:Player)
-WHERE p.position IS NOT NULL
 MERGE (pos:Position {type: p.position})
 MERGE (p)-[:PLAYS_POSITION]->(pos);
